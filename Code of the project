@@ -1,0 +1,237 @@
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+import numpy as np
+from sklearn.preprocessing import LabelEncoder
+from sklearn.linear_model import LinearRegression
+from sklearn.tree import DecisionTreeRegressor
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.model_selection import GridSearchCV
+from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
+
+# Load and Display the dataset
+df = pd.read_csv("survey_results_public.csv")
+df.head()
+
+# Display the all columns names
+print(df.columns)
+
+## Data Preprocessing
+
+# Extracting meaningful and required features
+data = df[["Country","EdLevel","YearsCodePro","Employment","ConvertedCompYearly"]]
+data.head(2)
+
+# Rename the column convertedcompyearly to salary for easy to understand
+data = data.rename({"ConvertedCompYearly": "Salary"}, axis=1)
+data.head(2)
+
+# keep the data where the salary is not null
+df = data[data["Salary"].notnull()]
+df.head(2)
+
+# Shape of the data
+print("******** Dataset Shape ********")
+print("\nTotal Rows : ",df.shape[0])
+print("Total Columns : ",df.shape[1])
+print("\n=====================================")
+print("\n***** Dataset Details ******")
+print(df.info())
+print("\n=====================================")
+print("\n***** Descriptive Data *****")
+df.describe(include= "all")
+
+# Check for the Missing values in the dataset
+Missing_per = pd.DataFrame({"Count":df.isnull().sum(),"Percentage": (df.isnull().sum()/df.shape[0])})
+Missing_per
+
+# As observe the missing data is very less so drop all the missing values
+df = df.dropna()
+# Check missing data present or not
+df.isna().sum()
+
+# Extracting data on the basis of employment is full time
+df = df[df["Employment"] == "Employed, full-time"]
+df = df.drop("Employment",axis=1)
+df.info()
+
+# preprocess the country column data
+df["Country"].value_counts()
+
+# There are some countries whode data available is too low which can confuse the user
+# Create a function set the cutoff and Extract those whose data is more than cutoff and all other coutries map in 'Other'
+
+def Extract_less_data_categories(categories,cutoff):
+    country_category_map = {}
+    for i in range(len(categories)):
+        if categories.values[i] >= cutoff:
+            country_category_map[categories.index[i]] = categories.index[i]
+        else:
+            country_category_map[categories.index[i]] = "Other"
+    return country_category_map
+
+country_map = Extract_less_data_categories(df["Country"].value_counts() , 400)   # set the cutoff is 400
+df["Country"] = df["Country"].map(country_map)
+df["Country"].value_counts()
+
+df["Country"] = df["Country"].replace("United Kingdom of Great Britain and Northern Ireland","United Kingdom")
+df["Country"] = df["Country"].replace("United States of America","United States")
+
+fig, ax = plt.subplots(1,1, figsize=(12,7))
+df.boxplot("Salary","Country", ax=ax)
+plt.title(" ")
+plt.suptitle("Salary($) vs Country")
+plt.xticks(rotation=90)
+plt.ylabel("Salary")
+plt.show()
+
+# As observe above the data contain more outliers
+# Filtering the salary(as per median) where the meaningful and most data present
+df = df[df["Salary"] <=250000]
+df = df[df["Salary"] >=10000]
+df = df[df["Country"] != "Other"]
+
+fig, ax = plt.subplots(1,1, figsize=(12,7))
+df.boxplot("Salary","Country", ax=ax)
+plt.title(" ")
+plt.suptitle("Salary($) vs Country")
+plt.xticks(rotation=90)
+plt.ylabel("Salary")
+plt.show()   # Now most data outliers are removed and we can see box plot
+
+# preproesse of YearsCodePro columns data
+df["YearsCodePro"].unique()
+
+def clean_experinece(x):
+    if x == 'More than 50 years':
+        return 50
+    if x == 'Less than 1 year':
+        return 0.5
+    return float(x)
+df["YearsCodePro"] = df["YearsCodePro"].apply(clean_experinece)
+
+# Now all the data conveted into float
+df["YearsCodePro"].unique()
+
+# preprocess on column EdLevel
+df["EdLevel"].unique()
+
+def clean_education(x):
+    if 'Bachelor’s degree' in x:
+        return 'Bachelor’s degree'
+    if 'Master’s degree' in x:
+        return 'Master’s degree'
+    if 'Professional degree' in x or 'doctoral degree' in x:
+        return 'Post Graduate'
+    return 'Less than a Bachelors'
+
+df["EdLevel"] = df["EdLevel"].apply(clean_education)
+
+# function get correctly applied
+df["EdLevel"].unique()
+
+## Encoding
+
+labelencoder_ed = LabelEncoder()
+df["EdLevel"] = labelencoder_ed.fit_transform(df["EdLevel"])
+df["EdLevel"].unique()
+
+labelencoder_co = LabelEncoder()
+df["Country"] = labelencoder_co.fit_transform(df["Country"])
+df["Country"].unique()
+
+df.head()
+
+## Data Spliting
+
+x = df.drop("Salary", axis=1)
+y = df.Salary
+
+## Model_training
+
+# Train the ml model
+linear_reg = LinearRegression()
+linear_reg.fit(x,y.values )
+
+# Calculate the prediction and errors
+y_pred = linear_reg.predict(x)
+mean_error = np.sqrt(mean_squared_error(y,y_pred))
+print("Mean Squared Error :- ",mean_error)
+
+# As using linear regression error is more try with different model
+
+# train new model
+dec_tree = DecisionTreeRegressor()
+dec_tree.fit(x,y.values)
+
+# Generate prediction
+y_pred_dt = dec_tree.predict(x)
+mean_error_dt = np.sqrt(mean_squared_error(y,y_pred_dt))
+print("Mean Squared Error :- ",mean_error_dt)
+
+# again try with new model
+# train the model
+ran_for = RandomForestRegressor()
+ran_for.fit(x,y.values)
+
+y_pred_rf = ran_for.predict(x)
+mean_error_rf = np.sqrt(mean_squared_error(y,y_pred_rf))
+print("Mean Squared Error :- ",mean_error_rf)
+
+#as the error still more try with modelevaluation
+max_depth = [None,2,4,6,8,10]
+param = {"max_depth": max_depth}
+regressor =DecisionTreeRegressor(random_state=2)
+grid = GridSearchCV(estimator=regressor, param_grid=param, scoring="neg_mean_squared_error")
+grid.fit(x,y.values)
+
+estimator = grid.best_estimator_
+estimator
+
+estimator.fit(x,y.values)
+y_pred_grid = estimator.predict(x)
+mean_error_grid = np.sqrt(mean_squared_error(y.values,y_pred_grid))
+print("Mean Squared Error :- ",mean_error_grid)
+
+model_accuracy = r2_score(y.values,y_pred_grid)
+print("Model Accuracy : ",model_accuracy)
+
+## Prediction
+
+x
+
+# pass country degree and year of exp
+x = np.array([["United States", "Master’s degree", 10]])
+x
+
+x[:, 0] = labelencoder_co.transform(x[:,0])
+x[:, 1] = labelencoder_ed.transform(x[:,1])
+x = x.astype(float)
+x
+
+y_pred = estimator.predict(x)
+y_pred
+
+## Save the model
+
+import pickle
+
+data = {"model": estimator, "labelencoder_co": labelencoder_co, "labelencoder_ed": labelencoder_ed}
+
+with open('saved_developer_pro_steps.pkl', 'wb') as file:      #wb:writebinary, rb:readbinary
+    pickle.dump(data,file)
+
+with open('saved_developer_pro_steps.pkl', 'rb') as file:
+    data = pickle.load(file)
+
+estimator_model_loaded = data["model"]
+le_country = data["labelencoder_co"]
+le_education = data["labelencoder_ed"]
+
+y_pred = estimator_model_loaded.predict(x)
+y_pred
+
+#### using above code save the model as observe prediction found same as previous using file saved model
+
+pip install --upgrade scikit-learn
+
